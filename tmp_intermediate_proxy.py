@@ -259,9 +259,15 @@ import json
 
 # --- Configuration ---
 LLAMA_CPP_URL = "http://192.168.0.118:8000/v1/chat/completions"
-MODEL_NAME = "Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-Q5_K_P.gguf"  # IMPORTANT: Change this to the name of the model loaded by llama.cpp
+
+# Model: http://192.168.0.118:3000/?model=Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf
+#MODEL_NAME = "Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-Q5_K_P.gguf"  # IMPORTANT: Change this to the name of the model loaded by llama.cpp
+#TEMPERATURE = 0.7                   # Creativity level (0.0 = deterministic, 1.0 = highly creative)
+#MAX_TOKENS = 512                    # Maximum length of the response
+MODEL_NAME = "Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf"  # IMPORTANT: Change this to the name of the model loaded by llama.cpp
 TEMPERATURE = 0.7                   # Creativity level (0.0 = deterministic, 1.0 = highly creative)
-MAX_TOKENS = 512                    # Maximum length of the response
+MAX_TOKENS = 115000                    # Maximum length of the response
+
 
 #def get_llm_response(user_prompt: str, system_instruction: str = "You are a helpful, concise robotics assistant. Respond in YAML format when possible.") -> str:
 #        "messages": [
@@ -287,7 +293,13 @@ def get_llm_response(messages) -> str:
         "model": MODEL_NAME,
         "messages": messages,
         "max_tokens": MAX_TOKENS,
-        "temperature": TEMPERATURE,
+        "temperature": 0.7,
+        "top_p": 0.95,
+        "top_k": 20,
+        "min_p": 0.0,
+        "presence_penalty": 1.0,
+        "repeat_penalty": 1.0,
+        "max_tokens": 256,
         # Optional: If you need to enforce JSON output strictly
         "response_format": {"type": "json_object"},
         "tools": tools,
