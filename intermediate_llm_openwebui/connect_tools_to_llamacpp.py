@@ -8,37 +8,41 @@
 #uv pip install docker
 ## every time
 #source .venv/bin/activate
-#uvicorn connect_to_open_webui:app --reload --host XXX.XXX.XXX.XXX --port 8001
+#uvicorn connect_tools_to_llamacpp:app --reload --host XXX.XXX.XXX.XXX --port 8001
 
 #TODO:
 # add serach tool
 # 
 
-
 import os
-
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 import time
 
-
-
 import requests
 
 import json, random
 from typing import Any
 
-
 import docker, subprocess
-
 
 import asyncio
 import httpx
 from playwright.async_api import async_playwright
 from markdownify import markdownify as md
 from bs4 import BeautifulSoup
+
+
+
+BASE_URL = "http://192.168.0.118"
+PORT_LLM = "8000"
+PORT_SEARXNG = "8080"
+PORT_OPENWEBUI = "3000"
+
+
+
 
 async def fetch_live_page(url: str, use_js: bool = True) -> str:
     if use_js:
@@ -97,12 +101,6 @@ def write_json(json_content: str,target_path: str) -> str:
         return f"Unrecognized error: {e}"
     return "False"
 
-
-
-BASE_URL = "http://192.168.0.118"
-PORT_LLM = "8000"
-PORT_SEARXNG = "8080"
-PORT_OPENWEBUI = "3000"
 
 
 
@@ -175,18 +173,29 @@ async def terminal(command: str) -> str:
     #    return f"Command failed: {e.stderr}"
 
 
-async def websearch(search: str) -> str:
-    print(f"REQUESTED WEBSEARCH: l{search}")
-    response = requests.get(
-            f"{BASE_URL}:{PORT_SEARXNG}/search",
-        params={"q": f"{search}", "format": "json"}
+async def websearch(search: str, iter_: int = 0, engines: str = "") -> str:
+    if iter_ > 10:
+        return "Failed to handle request"
+    print(f"REQUESTED WEBSEARCH: {search}")
+    url=f"{BASE_URL}:{PORT_SEARXNG}/search"
+    params={"q": f"{search}", "format": "json"}
+    if engines != "":
+        params.update({"engines": "google,bing"})
+    #print(f"url: {url}")
+    #print(f"params: {params}")
+    response = requests.get(url,
+        params=params
     )
+    print(f"response: {response}")
     response.raise_for_status()
-    data = response.json()
-    
-    output=""
-    for result in data.get("results", []):
-        out+=f"{result.get('title') + " @ " + result.get('url')}"
+    if response.status_code == 200:
+        data = response.json()
+        print(f"data: {data}")
+        output=str(data)
+        #for result in data.get("results", []):
+        #    out+=f"{result.get('title') + " @ " + result.get('url')}"
+    else:
+        return websearch(search,inter_+1,engines)
     return output
 async def webpage_request(url: str) -> str:
     print(f"\n\nREQUESTED WEBPAGE: {url}")
@@ -347,7 +356,7 @@ tools = [
         "type": "function",
         "function": {
             "name": "websearch",
-            "description": "Perform a web search to get webpages.",
+            "description": "Perform a web search to get info. Provide references if used.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -378,8 +387,8 @@ tools = [
         },
     },
 ]
-# Other examples:
 
+# Other examples:
 
 #def add_number(a: float | str, b: float | str) -> float:
 #    return float(a) + float(b)
@@ -496,7 +505,6 @@ MAX_TOKENS = 115000                    # Maximum length of the response
 
 
 
-
 async def get_llm_response(messages) -> str:
     """
     Sends a prompt to the Llama.cpp server and returns the generated text content.
@@ -530,7 +538,7 @@ async def get_llm_response(messages) -> str:
         if messages[msg_num]['role'] == "system":
             if messages[msg_num]['content'][-1]!='.':
                 messages[msg_num]['content']+='.'
-            messages[msg_num]['content']+=" Validate results with tools if possible. If tools don't give enough info, request from user in chat."
+            messages[msg_num]['content']+=" Validate results with tools if possible. If tools don't give enough info, request from user in chat. Respond with sources and tools used with references."
     payload = {
         "model": MODEL_NAME,
         "messages": messages,
@@ -601,48 +609,6 @@ async def get_llm_response(messages) -> str:
     except:
         print(f"\n--- An Unexpected Error Occurred ---")
         os._exit(os.EX_OK)
-
-
-# ====================================================
-# --- TEST SCENARIOS ---
-# ====================================================
-
-# Test 3: Tool call (testing new features)
-#user_prompt = "What is 1+2?"
-#system_instruction = "You are a helpful, concise robotics assistant. Respond in YAML format when possible."
-#
-#messages= [
-#    # System message sets the stage (crucial for robotics!)
-#    {"role": "system", "content": system_instruction},
-#    # User message is the actual query
-#    {"role": "user", "content": user_prompt}
-#]
-#llm_final_response = await get_llm_response(messages)
-#print(f"\n>>> PROMPT: {user_prompt}")
-#print(f"\n🤖 RESPONSE:\n{llm_final_response}")
-#print("="*50)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -753,38 +719,40 @@ async def create_chat_completion(request: ChatCompletionRequest):
     
     return response
 
-#@app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
-#async def chat_completion_endpoint(request: ChatCompletionRequest):
-#    """
-#    Handles the primary LLM chat completion request. 
-#    It ignores the input and always returns the fixed response: "testing".
-#    """
-#    print(f"Received request to /v1/chat/completions. Prompting model: {request.model}")
-#    
-#    # --- Core Logic: Force the response to be "testing" ---
-#    
-#    # Construct the message object containing the fixed response
-#    mock_message_content = "testing"
-#    
-#    # Create the Choice object
-#    mock_choice = Choice(
-#        index=0,
-#        message=dict(content=mock_message_content),
-#        finish_reason="stop"
-#    )
-#    
-#    # Construct the final response object
-#    response = ChatCompletionResponse(
-#        id="chatcmpl-dummy-12345",
-#        created=int(time.time()), # Using current timestamp
-#        model=request.model,
-#        choices=[mock_choice]
-#    )
-#    
-#    return response
+
+
+
+
+
 
 # --- How to Run This Code ---
 # 1. Install dependencies: pip install fastapi uvicorn pydantic
 # 2. Save the code above as main.py
 # 3. Run from your terminal: uvicorn main:app --reload
 # -----------------------------------
+
+
+
+
+
+
+
+
+# ====================================================
+# --- TEST SCENARIOS ---
+# ====================================================
+
+# Test 3: Tool call (testing new features)
+#user_prompt = "What is 1+2?"
+#system_instruction = "You are a helpful, concise robotics assistant. Respond in YAML format when possible."
+#
+#messages= [
+#    # System message sets the stage (crucial for robotics!)
+#    {"role": "system", "content": system_instruction},
+#    # User message is the actual query
+#    {"role": "user", "content": user_prompt}
+#]
+#llm_final_response = await get_llm_response(messages)
+#print(f"\n>>> PROMPT: {user_prompt}")
+#print(f"\n🤖 RESPONSE:\n{llm_final_response}")
+#print("="*50)
